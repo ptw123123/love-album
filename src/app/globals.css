@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+body {
+  @apply min-h-screen bg-gradient-to-br from-[#ffd89b] via-[#c7e9fb] to-[#7ec8ff] text-zinc-900 antialiased;
+}
+
+.love-card {
+  @apply rounded-[3.5rem] border-4 border-white bg-white/80 shadow-[0_30px_50px_rgba(0,30,50,0.3)] backdrop-blur-xl;
+}
+
+.love-badge {
+  @apply inline-flex items-center gap-1.5 rounded-full bg-amber-100/90 px-3 py-1 text-xs font-medium text-sky-800 shadow-sm;
+}
+
+.love-pill-button {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-300 px-6 py-2.5 text-sm font-semibold text-sky-900 shadow-[0_8px_0_rgba(212,123,40,1)] transition hover:translate-y-0.5 hover:shadow-[0_5px_0_rgba(212,123,40,1)] active:translate-y-1 active:shadow-[0_2px_0_rgba(212,123,40,1)];
+}
+
+.love-pill-button-secondary {
+  @apply inline-flex items-center justify-center rounded-full border border-sky-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-50;
+}
+
+.love-grid {
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.4) 1px, transparent 0);
+  background-size: 22px 22px;
+}
