@@ -8,6 +8,12 @@ type Section = {
   count: number;
 };
 
+type DiaryMessage = {
+  text: string;
+  time: string;
+  createdAt: number;
+};
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -24,12 +30,8 @@ export default function Home() {
   const [activeMoodKey, setActiveMoodKey] = useState<string | null>(null);
   const [boyInput, setBoyInput] = useState<string>("");
   const [girlInput, setGirlInput] = useState<string>("");
-  const [boyMessages, setBoyMessages] = useState<
-    { text: string; time: string }[]
-  >([]);
-  const [girlMessages, setGirlMessages] = useState<
-    { text: string; time: string }[]
-  >([]);
+  const [boyMessages, setBoyMessages] = useState<DiaryMessage[]>([]);
+  const [girlMessages, setGirlMessages] = useState<DiaryMessage[]>([]);
 
   const fetchSections = async () => {
     try {
@@ -50,6 +52,56 @@ export default function Home() {
   useEffect(() => {
     void fetchSections();
   }, []);
+
+  // 从本地恢复「他说的话 / 她说的话」，只保留 24 小时内的记录
+  useEffect(() => {
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    try {
+      const now = Date.now();
+      const boyRaw = window.localStorage.getItem("loveAlbum_boyMessages");
+      if (boyRaw) {
+        const parsed = JSON.parse(boyRaw) as DiaryMessage[];
+        const valid = parsed.filter(
+          (m) => typeof m.createdAt === "number" && now - m.createdAt < ONE_DAY
+        );
+        setBoyMessages(valid);
+      }
+
+      const girlRaw = window.localStorage.getItem("loveAlbum_girlMessages");
+      if (girlRaw) {
+        const parsed = JSON.parse(girlRaw) as DiaryMessage[];
+        const valid = parsed.filter(
+          (m) => typeof m.createdAt === "number" && now - m.createdAt < ONE_DAY
+        );
+        setGirlMessages(valid);
+      }
+    } catch {
+      // 忽略本地存储错误，保持页面可用
+    }
+  }, []);
+
+  // 将最新的「他说的话 / 她说的话」写入本地存储
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "loveAlbum_boyMessages",
+        JSON.stringify(boyMessages)
+      );
+    } catch {
+      // ignore
+    }
+  }, [boyMessages]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "loveAlbum_girlMessages",
+        JSON.stringify(girlMessages)
+      );
+    } catch {
+      // ignore
+    }
+  }, [girlMessages]);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -195,157 +247,6 @@ export default function Home() {
                     </p>
                   )}
                 </div>
-
-                {/* 心情 + 留言 */}
-                <div className="mt-3 space-y-2 rounded-2xl bg-sky-50/70 p-3">
-                  <p className="text-xs font-medium text-sky-900">
-                    今日的小心情
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { key: "happy", label: "超开心", emoji: "😆" },
-                      { key: "warm", label: "被爱着", emoji: "🥰" },
-                      { key: "calm", label: "很放松", emoji: "😊" },
-                      { key: "miss", label: "有点想你", emoji: "🥺" },
-                      { key: "tired", label: "有点累", emoji: "😴" },
-                    ].map((item) => {
-                      const selected = mood === item.label;
-                      const bouncing = activeMoodKey === item.key;
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => {
-                            setMood(selected ? "" : item.label);
-                            setActiveMoodKey(item.key);
-                            setTimeout(() => setActiveMoodKey(null), 350);
-                          }}
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium shadow-sm transition ${
-                            selected
-                              ? "bg-amber-300 text-sky-900"
-                              : "bg-white text-sky-800"
-                          } ${bouncing ? "animate-bounce" : ""}`}
-                        >
-                          <span>{item.emoji}</span>
-                          <span>{item.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[10px] text-sky-500">
-                    今天是 {new Date().toLocaleDateString("zh-CN")} 。
-                  </p>
-                  {/* 想说的话：左右两块，本地预览效果 */}
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    {/* 男生区 */}
-                    <div className="space-y-2 rounded-2xl bg-white/90 p-3 shadow-sm">
-                      <p className="text-[11px] font-semibold text-sky-900">
-                        他说的话
-                      </p>
-                      <textarea
-                        value={boyInput}
-                        onChange={(e) => setBoyInput(e.target.value)}
-                        rows={2}
-                        maxLength={120}
-                        className="w-full resize-none rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs text-sky-900 outline-none focus:border-sky-400"
-                        placeholder="写一句今天想对她说的话～"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const text = boyInput.trim();
-                          if (!text) return;
-                          const time = new Date().toLocaleString("zh-CN", {
-                            hour12: false,
-                          });
-                          setBoyMessages((prev) => [
-                            { text, time },
-                            ...prev,
-                          ]);
-                          setBoyInput("");
-                        }}
-                        className="love-pill-button-secondary text-xs"
-                      >
-                        男生提交
-                      </button>
-                      <div className="mt-2 h-28 space-y-1 overflow-y-auto rounded-xl bg-sky-50/80 p-2 text-[11px] text-sky-900">
-                        {boyMessages.length === 0 && (
-                          <p className="text-[10px] text-sky-400">
-                            还没有记录，有什么想说的？
-                          </p>
-                        )}
-                        {boyMessages.map((m, idx) => (
-                          <div
-                            key={`${m.time}-${idx}`}
-                            className="rounded-lg bg-white/80 px-2 py-1 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-                          >
-                            <div className="flex items-center justify-between text-[10px] text-sky-500">
-                              <span>🧑‍🚀</span>
-                              <span>{m.time}</span>
-                            </div>
-                            <p className="mt-1 text-[11px] text-sky-900">
-                              {m.text}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 女生区 */}
-                    <div className="space-y-2 rounded-2xl bg-white/90 p-3 shadow-sm">
-                      <p className="text-[11px] font-semibold text-sky-900">
-                        她说的话
-                      </p>
-                      <textarea
-                        value={girlInput}
-                        onChange={(e) => setGirlInput(e.target.value)}
-                        rows={2}
-                        maxLength={120}
-                        className="w-full resize-none rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs text-sky-900 outline-none focus:border-sky-400"
-                        placeholder="写一句今天想对他说的话～"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const text = girlInput.trim();
-                          if (!text) return;
-                          const time = new Date().toLocaleString("zh-CN", {
-                            hour12: false,
-                          });
-                          setGirlMessages((prev) => [
-                            { text, time },
-                            ...prev,
-                          ]);
-                          setGirlInput("");
-                        }}
-                        className="love-pill-button-secondary text-xs"
-                      >
-                        女生提交
-                      </button>
-                      <div className="mt-2 h-28 space-y-1 overflow-y-auto rounded-xl bg-sky-50/80 p-2 text-[11px] text-sky-900">
-                        {girlMessages.length === 0 && (
-                          <p className="text-[10px] text-sky-400">
-                            这里可以写下你今天的小心声。
-                          </p>
-                        )}
-                        {girlMessages.map((m, idx) => (
-                          <div
-                            key={`${m.time}-${idx}`}
-                            className="rounded-lg bg-white/80 px-2 py-1 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-                          >
-                            <div className="flex items-center justify-between text-[10px] text-sky-500">
-                              <span>👩‍🎨</span>
-                              <span>{m.time}</span>
-                            </div>
-                            <p className="mt-1 text-[11px] text-sky-900">
-                              {m.text}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-2">
@@ -397,6 +298,157 @@ export default function Home() {
                     {uploading ? "上传中..." : "上传到我们的相册"}
                   </button>
                   <span className="sr-only">提示</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 心情 + 留言：移动端显示在分区与照片下面，整体在一起 */}
+            <div className="mt-3 space-y-2 rounded-2xl bg-sky-50/70 p-3">
+              <p className="text-xs font-medium text-sky-900">
+                今日的小心情
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: "happy", label: "超开心", emoji: "😆" },
+                  { key: "warm", label: "被爱着", emoji: "🥰" },
+                  { key: "calm", label: "很放松", emoji: "😊" },
+                  { key: "miss", label: "有点想你", emoji: "🥺" },
+                  { key: "tired", label: "有点累", emoji: "😴" },
+                ].map((item) => {
+                  const selected = mood === item.label;
+                  const bouncing = activeMoodKey === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        setMood(selected ? "" : item.label);
+                        setActiveMoodKey(item.key);
+                        setTimeout(() => setActiveMoodKey(null), 350);
+                      }}
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium shadow-sm transition ${
+                        selected
+                          ? "bg-amber-300 text-sky-900"
+                          : "bg-white text-sky-800"
+                      } ${bouncing ? "animate-bounce" : ""}`}
+                    >
+                      <span>{item.emoji}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-sky-500">
+                今天是 {new Date().toLocaleDateString("zh-CN")} 。
+              </p>
+              {/* 想说的话：左右两块，本地预览效果 */}
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {/* 男生区 */}
+                <div className="space-y-2 rounded-2xl bg-white/90 p-3 shadow-sm">
+                  <p className="text-[11px] font-semibold text-sky-900">
+                    他说的话
+                  </p>
+                  <textarea
+                    value={boyInput}
+                    onChange={(e) => setBoyInput(e.target.value)}
+                    rows={2}
+                    maxLength={120}
+                    className="w-full resize-none rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs text-sky-900 outline-none focus:border-sky-400"
+                    placeholder="写一句今天想对她说的话～"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = boyInput.trim();
+                      if (!text) return;
+                      const time = new Date().toLocaleString("zh-CN", {
+                        hour12: false,
+                      });
+                      setBoyMessages((prev) => [
+                        { text, time, createdAt: Date.now() },
+                        ...prev,
+                      ]);
+                      setBoyInput("");
+                    }}
+                    className="love-pill-button-secondary text-xs"
+                  >
+                    男生提交
+                  </button>
+                  <div className="mt-2 h-28 space-y-1 overflow-y-auto rounded-xl bg-sky-50/80 p-2 text-[11px] text-sky-900">
+                    {boyMessages.length === 0 && (
+                      <p className="text-[10px] text-sky-400">
+                        还没有记录，有什么想说的？
+                      </p>
+                    )}
+                    {boyMessages.map((m, idx) => (
+                      <div
+                        key={`${m.time}-${idx}`}
+                        className="rounded-lg bg-white/80 px-2 py-1 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                      >
+                        <div className="flex items-center justify-between text-[10px] text-sky-500">
+                          <span>🧑‍🚀</span>
+                          <span>{m.time}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-sky-900">
+                          {m.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 女生区 */}
+                <div className="space-y-2 rounded-2xl bg-white/90 p-3 shadow-sm">
+                  <p className="text-[11px] font-semibold text-sky-900">
+                    她说的话
+                  </p>
+                  <textarea
+                    value={girlInput}
+                    onChange={(e) => setGirlInput(e.target.value)}
+                    rows={2}
+                    maxLength={120}
+                    className="w-full resize-none rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs text-sky-900 outline-none focus:border-sky-400"
+                    placeholder="写一句今天想对他说的话～"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = girlInput.trim();
+                      if (!text) return;
+                      const time = new Date().toLocaleString("zh-CN", {
+                        hour12: false,
+                      });
+                      setGirlMessages((prev) => [
+                        { text, time, createdAt: Date.now() },
+                        ...prev,
+                      ]);
+                      setGirlInput("");
+                    }}
+                    className="love-pill-button-secondary text-xs"
+                  >
+                    女生提交
+                  </button>
+                  <div className="mt-2 h-28 space-y-1 overflow-y-auto rounded-xl bg-sky-50/80 p-2 text-[11px] text-sky-900">
+                    {girlMessages.length === 0 && (
+                      <p className="text-[10px] text-sky-400">
+                        这里可以写下你今天的小心声。
+                      </p>
+                    )}
+                    {girlMessages.map((m, idx) => (
+                      <div
+                        key={`${m.time}-${idx}`}
+                        className="rounded-lg bg-white/80 px-2 py-1 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                      >
+                        <div className="flex items-center justify-between text-[10px] text-sky-500">
+                          <span>👩‍🎨</span>
+                          <span>{m.time}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-sky-900">
+                          {m.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
