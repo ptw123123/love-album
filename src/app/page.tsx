@@ -16,8 +16,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [loadingSections, setLoadingSections] = useState(false);
-  const [selectedSection, setSelectedSection] = useState<string | "new">("new");
-  const [newSectionName, setNewSectionName] = useState("日常碎碎念");
+  const [selectedSection, setSelectedSection] = useState<string>("");
+  const [newSectionName, setNewSectionName] = useState("");
   const [sectionPickerOpen, setSectionPickerOpen] = useState(false);
   const [mood, setMood] = useState<string>("");
   const [moodNote, setMoodNote] = useState<string>("");
@@ -59,8 +59,11 @@ export default function Home() {
       return;
     }
 
-    const effectiveSection =
-      selectedSection === "new" ? newSectionName : selectedSection;
+    const effectiveSection = selectedSection.trim();
+    if (!effectiveSection) {
+      setError("请先选择一个分区，再上传照片。");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -145,9 +148,7 @@ export default function Home() {
                           选择分区
                         </span>
                         <span className="text-sm font-semibold">
-                          {selectedSection && selectedSection !== "new"
-                            ? selectedSection
-                            : "请选择一个分区"}
+                          {selectedSection ? selectedSection : "请选择一个分区"}
                         </span>
                       </div>
                       <span className="ml-2 text-sky-500">⌄</span>
@@ -472,9 +473,6 @@ export default function Home() {
                   className="group relative flex aspect-[4/3] flex-col justify-between overflow-hidden rounded-[2rem] border-4 border-sky-100 bg-[#e0f2fe] p-4 text-left shadow-sm transition hover:-translate-y-1 hover:border-sky-300 hover:shadow-md"
                 >
                   <div className="space-y-1">
-                    <p className="text-xs font-medium text-sky-700">
-                      小分区
-                    </p>
                     <h3 className="line-clamp-2 text-sm font-semibold text-sky-900">
                       {section.name}
                     </h3>
@@ -482,9 +480,6 @@ export default function Home() {
                   <div className="flex items-center justify-between">
                     <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-medium text-sky-800">
                       {section.count} 张照片
-                    </span>
-                    <span className="text-[11px] text-sky-700">
-                      点开看这个分区
                     </span>
                   </div>
                 </Link>
