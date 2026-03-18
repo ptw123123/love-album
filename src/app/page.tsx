@@ -173,7 +173,6 @@ export default function Home() {
           const cosForm = new FormData();
           cosForm.append("key", token.key);
           cosForm.append("acl", "default");
-          cosForm.append("success_action_status", "200");
           cosForm.append("policy", token.policy);
           cosForm.append("q-sign-algorithm", token["q-sign-algorithm"] ?? "sha1");
           cosForm.append("q-ak", token["q-ak"] ?? "");
