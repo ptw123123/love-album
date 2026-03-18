@@ -255,7 +255,7 @@ export default function AlbumSectionClient({ section }: { section: string }) {
               <button
                 type="button"
                 onClick={() => void handleDelete(photo)}
-                className="absolute right-2 top-2 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium text-white opacity-0 shadow-sm backdrop-blur-sm transition group-hover:opacity-100"
+                className="absolute right-2 top-2 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium text-white opacity-100 shadow-sm backdrop-blur-sm transition sm:opacity-0 sm:group-hover:opacity-100"
                 disabled={deletingKey === photo.key}
               >
                 {deletingKey === photo.key ? "删除中..." : "删除"}

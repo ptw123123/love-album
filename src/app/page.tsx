@@ -49,38 +49,53 @@ export default function Home() {
     }
   };
 
+  const fetchMessages = async () => {
+    try {
+      const res = await fetch("/api/messages");
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        boyMessages?: DiaryMessage[];
+        girlMessages?: DiaryMessage[];
+      };
+      if (Array.isArray(data.boyMessages)) setBoyMessages(data.boyMessages);
+      if (Array.isArray(data.girlMessages)) setGirlMessages(data.girlMessages);
+    } catch {
+      // 接口失败时从本地恢复（例如未配置 COS）
+      const ONE_DAY = 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      try {
+        const boyRaw = window.localStorage.getItem("loveAlbum_boyMessages");
+        if (boyRaw) {
+          const parsed = JSON.parse(boyRaw) as DiaryMessage[];
+          const valid = parsed.filter(
+            (m) => typeof m.createdAt === "number" && now - m.createdAt < ONE_DAY
+          );
+          setBoyMessages(valid);
+        }
+        const girlRaw = window.localStorage.getItem("loveAlbum_girlMessages");
+        if (girlRaw) {
+          const parsed = JSON.parse(girlRaw) as DiaryMessage[];
+          const valid = parsed.filter(
+            (m) => typeof m.createdAt === "number" && now - m.createdAt < ONE_DAY
+          );
+          setGirlMessages(valid);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   useEffect(() => {
     void fetchSections();
   }, []);
 
-  // 从本地恢复「他说的话 / 她说的话」，只保留 24 小时内的记录
+  // 从云端拉取「他说的话 / 她说的话」，双方都能看到对方的留言
   useEffect(() => {
-    const ONE_DAY = 24 * 60 * 60 * 1000;
-    try {
-      const now = Date.now();
-      const boyRaw = window.localStorage.getItem("loveAlbum_boyMessages");
-      if (boyRaw) {
-        const parsed = JSON.parse(boyRaw) as DiaryMessage[];
-        const valid = parsed.filter(
-          (m) => typeof m.createdAt === "number" && now - m.createdAt < ONE_DAY
-        );
-        setBoyMessages(valid);
-      }
-
-      const girlRaw = window.localStorage.getItem("loveAlbum_girlMessages");
-      if (girlRaw) {
-        const parsed = JSON.parse(girlRaw) as DiaryMessage[];
-        const valid = parsed.filter(
-          (m) => typeof m.createdAt === "number" && now - m.createdAt < ONE_DAY
-        );
-        setGirlMessages(valid);
-      }
-    } catch {
-      // 忽略本地存储错误，保持页面可用
-    }
+    void fetchMessages();
   }, []);
 
-  // 将最新的「他说的话 / 她说的话」写入本地存储
+  // 云端拉取成功后，同步到本地以便接口不可用时仍能本地展示
   useEffect(() => {
     try {
       window.localStorage.setItem(
@@ -381,17 +396,38 @@ export default function Home() {
                   />
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const text = boyInput.trim();
                       if (!text) return;
-                      const time = new Date().toLocaleString("zh-CN", {
-                        hour12: false,
-                      });
-                      setBoyMessages((prev) => [
-                        { text, time, createdAt: Date.now() },
-                        ...prev,
-                      ]);
                       setBoyInput("");
+                      try {
+                        const res = await fetch("/api/messages", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ role: "boy", text }),
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.boyMessages) {
+                          setBoyMessages(data.boyMessages);
+                          if (data.girlMessages) setGirlMessages(data.girlMessages);
+                        } else {
+                          const time = new Date().toLocaleString("zh-CN", {
+                            hour12: false,
+                          });
+                          setBoyMessages((prev) => [
+                            { text, time, createdAt: Date.now() },
+                            ...prev,
+                          ]);
+                        }
+                      } catch {
+                        const time = new Date().toLocaleString("zh-CN", {
+                          hour12: false,
+                        });
+                        setBoyMessages((prev) => [
+                          { text, time, createdAt: Date.now() },
+                          ...prev,
+                        ]);
+                      }
                     }}
                     className="love-pill-button-secondary text-xs"
                   >
@@ -435,17 +471,38 @@ export default function Home() {
                   />
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const text = girlInput.trim();
                       if (!text) return;
-                      const time = new Date().toLocaleString("zh-CN", {
-                        hour12: false,
-                      });
-                      setGirlMessages((prev) => [
-                        { text, time, createdAt: Date.now() },
-                        ...prev,
-                      ]);
                       setGirlInput("");
+                      try {
+                        const res = await fetch("/api/messages", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ role: "girl", text }),
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.girlMessages) {
+                          setGirlMessages(data.girlMessages);
+                          if (data.boyMessages) setBoyMessages(data.boyMessages);
+                        } else {
+                          const time = new Date().toLocaleString("zh-CN", {
+                            hour12: false,
+                          });
+                          setGirlMessages((prev) => [
+                            { text, time, createdAt: Date.now() },
+                            ...prev,
+                          ]);
+                        }
+                      } catch {
+                        const time = new Date().toLocaleString("zh-CN", {
+                          hour12: false,
+                        });
+                        setGirlMessages((prev) => [
+                          { text, time, createdAt: Date.now() },
+                          ...prev,
+                        ]);
+                      }
                     }}
                     className="love-pill-button-secondary text-xs"
                   >
