@@ -132,41 +132,93 @@ export default function Home() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("section", effectiveSection);
-    if (mood) formData.append("mood", mood);
-    if (moodNote) formData.append("moodNote", moodNote);
+    if (file.size > 10 * 1024 * 1024) {
+      setError("照片过大（单张建议不超过 10MB），请压缩后重试。");
+      return;
+    }
 
     setUploading(true);
     setError(null);
     setUploadedUrl(null);
 
-    const UPLOAD_TIMEOUT_MS = 90 * 1000; // 90 秒超时
-    const maxRetries = 1; // 失败后自动重试 1 次
+    const UPLOAD_TIMEOUT_MS = 120 * 1000; // 直传 120 秒
 
-    const doUpload = (retryCount: number): Promise<Response> => {
+    try {
+      // 1. 优先直传 COS：向本服务器要签名，再由浏览器直接 POST 到腾讯云，文件不经过服务器
+      const tokenRes = await fetch("/api/upload-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          section: effectiveSection,
+          filename: file.name,
+        }),
+      });
+
+      if (tokenRes.ok) {
+        const token = (await tokenRes.json()) as {
+          postUrl?: string;
+          key?: string;
+          policy?: string;
+          "q-sign-algorithm"?: string;
+          "q-ak"?: string;
+          "q-key-time"?: string;
+          "q-signature"?: string;
+        };
+        if (
+          token.postUrl &&
+          token.key &&
+          token.policy &&
+          token["q-signature"]
+        ) {
+          const cosForm = new FormData();
+          cosForm.append("key", token.key);
+          cosForm.append("policy", token.policy);
+          cosForm.append("q-sign-algorithm", token["q-sign-algorithm"] ?? "sha1");
+          cosForm.append("q-ak", token["q-ak"] ?? "");
+          cosForm.append("q-key-time", token["q-key-time"] ?? "");
+          cosForm.append("q-signature", token["q-signature"]);
+          cosForm.append("file", file);
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+          const cosRes = await fetch(token.postUrl, {
+            method: "POST",
+            body: cosForm,
+            signal: controller.signal,
+          }).finally(() => clearTimeout(timeoutId));
+
+          if (cosRes.ok || cosRes.status === 204) {
+            const baseUrl = token.postUrl!.replace(/\/?$/, "");
+            const url = `${baseUrl}/${encodeURI(token.key)}`;
+            setUploadedUrl(url);
+            void fetchSections();
+            setUploading(false);
+            return;
+          }
+        }
+      }
+
+      // 2. 直传失败则回退：经本服务器转发到 COS
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("section", effectiveSection);
+      if (mood) formData.append("mood", mood);
+      if (moodNote) formData.append("moodNote", moodNote);
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-      return fetch("/api/upload", {
+      const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
         signal: controller.signal,
       }).finally(() => clearTimeout(timeoutId));
-    };
-
-    try {
-      let res = await doUpload(0);
-      if (!res.ok && res.status >= 500 && maxRetries > 0) {
-        res = await doUpload(1);
-      }
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error || "上传失败，请稍后重试。");
       }
 
-      const data = (await res.json()) as { url?: string; section?: string };
+      const data = (await res.json()) as { url?: string };
       if (data.url) {
         setUploadedUrl(data.url);
         void fetchSections();
