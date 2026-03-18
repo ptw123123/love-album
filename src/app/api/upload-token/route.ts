@@ -8,7 +8,7 @@ const COS_REGION = process.env.TENCENT_COS_REGION;
 const SECRET_ID = process.env.TENCENT_COS_SECRET_ID;
 const SECRET_KEY = process.env.TENCENT_COS_SECRET_KEY;
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB，直传 COS 支持
 
 /**
  * 生成 COS Post Object 签名，供前端直传 COS（文件不经过本服务器）

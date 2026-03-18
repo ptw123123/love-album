@@ -16,29 +16,17 @@ export default function AlbumSectionClient({ section }: { section: string }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [deletingSection, setDeletingSection] = useState(false);
-  const [selectedCoverUrls, setSelectedCoverUrls] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-
-        const [photosRes, coversRes] = await Promise.all([
-          fetch(`/api/list?section=${encodeURIComponent(decodedSectionName)}`),
-          fetch("/api/covers"),
-        ]);
-
+        const photosRes = await fetch(
+          `/api/list?section=${encodeURIComponent(decodedSectionName)}`
+        );
         if (photosRes.ok) {
           const data = (await photosRes.json()) as { photos?: Photo[] };
           setPhotos(data.photos ?? []);
-        }
-
-        if (coversRes.ok) {
-          const data = (await coversRes.json()) as {
-            covers?: Record<string, string[]>;
-          };
-          const urls = data.covers?.[decodedSectionName] ?? [];
-          setSelectedCoverUrls(urls);
         }
       } finally {
         setLoading(false);
@@ -66,50 +54,10 @@ export default function AlbumSectionClient({ section }: { section: string }) {
         throw new Error(data.error || "删除失败，请稍后重试。");
       }
       setPhotos((prev) => prev.filter((p) => p.key !== photo.key));
-      setSelectedCoverUrls((prev) => prev.filter((url) => url !== photo.url));
     } catch (err: any) {
       alert(err.message || "删除失败，请稍后重试。");
     } finally {
       setDeletingKey(null);
-    }
-  };
-
-  const toggleCover = (photo: Photo) => {
-    setSelectedCoverUrls((prev) => {
-      const exists = prev.includes(photo.url);
-      if (exists) {
-        const next = prev.filter((u) => u !== photo.url);
-        void saveCovers(next);
-        return next;
-      }
-      if (prev.length >= 2) {
-        alert("首页封面最多选择 2 张照片哦～");
-        return prev;
-      }
-      const next = [...prev, photo.url];
-      void saveCovers(next);
-      return next;
-    });
-  };
-
-  const saveCovers = async (urls: string[]) => {
-    try {
-      const res = await fetch("/api/covers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          section: decodedSectionName,
-          urls,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "保存封面失败，请稍后重试。");
-      }
-    } catch (err: any) {
-      alert(err.message || "保存封面失败，请稍后重试。");
     }
   };
 
@@ -245,17 +193,8 @@ export default function AlbumSectionClient({ section }: { section: string }) {
               </button>
               <button
                 type="button"
-                onClick={() => toggleCover(photo)}
-                className="absolute left-2 top-2 rounded-full bg-white/85 px-2 py-1 text-[10px] font-medium text-sky-800 shadow-sm"
-              >
-                {selectedCoverUrls.includes(photo.url)
-                  ? "✅ 首页封面"
-                  : "□ 设为封面"}
-              </button>
-              <button
-                type="button"
                 onClick={() => void handleDelete(photo)}
-                className="absolute right-2 top-2 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium text-white opacity-100 shadow-sm backdrop-blur-sm transition sm:opacity-0 sm:group-hover:opacity-100"
+                className="absolute right-2 top-2 z-10 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm backdrop-blur-sm transition hover:bg-black/55 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                 disabled={deletingKey === photo.key}
               >
                 {deletingKey === photo.key ? "删除中..." : "删除"}

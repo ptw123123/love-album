@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 // 延长超时，避免大图上传被平台提前中断（如 Vercel 默认 10s）
 export const maxDuration = 60;
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB，超过则拒绝（部署在 Vercel 时建议单张 < 4MB）
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB；经服务器回退时受部署平台请求体限制（如 Netlify 约 6MB）
 
 const cos = new COS({
   SecretId: process.env.TENCENT_COS_SECRET_ID,
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: `照片过大（${(file.size / 1024 / 1024).toFixed(1)}MB），请压缩后重试，单张建议不超过 10MB。` },
+        { error: `照片过大（${(file.size / 1024 / 1024).toFixed(1)}MB），单张不超过 50MB。` },
         { status: 400 }
       );
     }

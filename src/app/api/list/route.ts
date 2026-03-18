@@ -76,12 +76,22 @@ export async function GET(request: NextRequest) {
     if (sectionName) {
       const rawPrefix = `uploads/${sectionName}/`;
       const encodedPrefix = encodedSlug ? `uploads/${encodedSlug}/` : null;
+      const imageExt = /\.(jpe?g|png|gif|webp|bmp|heic)$/i;
       const photos =
         data.Contents?.filter(
-          (item) =>
-            item.Key &&
-            (item.Key.startsWith(rawPrefix) ||
-              (encodedPrefix ? item.Key.startsWith(encodedPrefix) : false))
+          (item) => {
+            if (!item.Key) return false;
+            if (
+              !item.Key.startsWith(rawPrefix) &&
+              !(encodedPrefix && item.Key.startsWith(encodedPrefix))
+            )
+              return false;
+            if (item.Key.endsWith("/.keep") || item.Key.endsWith(".keep"))
+              return false;
+            const fileName = item.Key.split("/").pop() ?? "";
+            if (!fileName || !imageExt.test(fileName)) return false;
+            return true;
+          }
         )
           .sort((a, b) => {
             const at = new Date(a.LastModified || "").getTime();
@@ -90,7 +100,7 @@ export async function GET(request: NextRequest) {
           })
           .map((item) => {
             const key = item.Key!;
-            const publicKey = encodeURI(key);
+            const publicKey = encodeURI(decodeURI(key));
             return {
               key,
               url: `https://${COS_BUCKET}.cos.${COS_REGION}.myqcloud.com/${publicKey}`,

@@ -11,6 +11,12 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 - `TENCENT_COS_BUCKET`
 - `TENCENT_COS_REGION`
 
+**可选：用户名登录**。若希望访问相册前先登录，只需配置：
+
+- `SESSION_SECRET`：会话签名密钥（建议 32 位随机字符串，如 `openssl rand -hex 16`）
+
+配置后，访问任意页面会先跳转到 `/login`，输入 **ptw** 或 **jj** 即可进入（无需密码）；首页右上角显示「退出登录」。不配置则相册可直接访问。
+
 **直传需在 COS 控制台为存储桶配置 CORS**。详细步骤见：[docs/COS-CORS配置教程.md](docs/COS-CORS配置教程.md)。简要：来源填站点域名（如 `https://你的域名.com` 或 `http://localhost:3000`），允许方法 GET/POST/PUT/HEAD，Allow-Headers 填 `*`，Expose-Headers 填 `ETag`。
 
 若仍很慢或失败：检查 COS 配置与网络；单张建议 &lt; 10MB；部署在 Vercel 时也可考虑换用 Vercel Blob 存储。

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 type Section = {
@@ -15,10 +16,14 @@ type DiaryMessage = {
 };
 
 export default function Home() {
-  const [file, setFile] = useState<File | null>(null);
+  const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+  const [successSection, setSuccessSection] = useState<string | null>(null);
+  const [successCount, setSuccessCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [loadingSections, setLoadingSections] = useState(false);
@@ -90,6 +95,13 @@ export default function Home() {
     void fetchSections();
   }, []);
 
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((d: { ok?: boolean }) => setIsLoggedIn(d.ok === true))
+      .catch(() => setIsLoggedIn(false));
+  }, []);
+
   // 从云端拉取「他说的话 / 她说的话」，双方都能看到对方的留言
   useEffect(() => {
     void fetchMessages();
@@ -118,11 +130,78 @@ export default function Home() {
     }
   }, [girlMessages]);
 
+  const uploadOneFile = async (
+    file: File,
+    effectiveSection: string,
+    timeoutMs: number
+  ): Promise<boolean> => {
+    const tokenRes = await fetch("/api/upload-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        section: effectiveSection,
+        filename: file.name,
+      }),
+    });
+
+    if (tokenRes.ok) {
+      const token = (await tokenRes.json()) as {
+        postUrl?: string;
+        key?: string;
+        policy?: string;
+        "q-sign-algorithm"?: string;
+        "q-ak"?: string;
+        "q-key-time"?: string;
+        "q-signature"?: string;
+      };
+      if (
+        token.postUrl &&
+        token.key &&
+        token.policy &&
+        token["q-signature"]
+      ) {
+        const cosForm = new FormData();
+        cosForm.append("key", token.key);
+        cosForm.append("acl", "default");
+        cosForm.append("policy", token.policy);
+        cosForm.append("q-sign-algorithm", token["q-sign-algorithm"] ?? "sha1");
+        cosForm.append("q-ak", token["q-ak"] ?? "");
+        cosForm.append("q-key-time", token["q-key-time"] ?? "");
+        cosForm.append("q-signature", token["q-signature"]);
+        cosForm.append("file", file);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const cosRes = await fetch(token.postUrl, {
+          method: "POST",
+          body: cosForm,
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeoutId));
+
+        if (cosRes.ok || cosRes.status === 204) return true;
+      }
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("section", effectiveSection);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId));
+    if (!res.ok) return false;
+    const data = (await res.json()) as { url?: string };
+    return !!data.url;
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!file) {
-      setError("请先选择一张图片。");
+    if (files.length === 0) {
+      setError("请先选择至少一张图片。");
       return;
     }
 
@@ -132,104 +211,44 @@ export default function Home() {
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      setError("照片过大（单张建议不超过 10MB），请压缩后重试。");
+    const MAX_SINGLE_MB = 50;
+    const maxBytes = MAX_SINGLE_MB * 1024 * 1024;
+    const toUpload = files.filter((f) => f.size <= maxBytes);
+    if (toUpload.length === 0) {
+      setError(`照片过大（单张不超过 ${MAX_SINGLE_MB}MB），请压缩后重试。`);
       return;
+    }
+    if (toUpload.length < files.length) {
+      setError(`有 ${files.length - toUpload.length} 张超过 ${MAX_SINGLE_MB}MB 已跳过，将上传其余 ${toUpload.length} 张。`);
     }
 
     setUploading(true);
     setError(null);
-    setUploadedUrl(null);
 
-    const UPLOAD_TIMEOUT_MS = 120 * 1000; // 直传 120 秒
+    const UPLOAD_TIMEOUT_MS = 120 * 1000;
+    let successCount = 0;
 
     try {
-      // 1. 优先直传 COS：向本服务器要签名，再由浏览器直接 POST 到腾讯云，文件不经过服务器
-      const tokenRes = await fetch("/api/upload-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          section: effectiveSection,
-          filename: file.name,
-        }),
-      });
-
-      if (tokenRes.ok) {
-        const token = (await tokenRes.json()) as {
-          postUrl?: string;
-          key?: string;
-          policy?: string;
-          "q-sign-algorithm"?: string;
-          "q-ak"?: string;
-          "q-key-time"?: string;
-          "q-signature"?: string;
-        };
-        if (
-          token.postUrl &&
-          token.key &&
-          token.policy &&
-          token["q-signature"]
-        ) {
-          const cosForm = new FormData();
-          cosForm.append("key", token.key);
-          cosForm.append("acl", "default");
-          cosForm.append("policy", token.policy);
-          cosForm.append("q-sign-algorithm", token["q-sign-algorithm"] ?? "sha1");
-          cosForm.append("q-ak", token["q-ak"] ?? "");
-          cosForm.append("q-key-time", token["q-key-time"] ?? "");
-          cosForm.append("q-signature", token["q-signature"]);
-          cosForm.append("file", file);
-
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-          const cosRes = await fetch(token.postUrl, {
-            method: "POST",
-            body: cosForm,
-            signal: controller.signal,
-          }).finally(() => clearTimeout(timeoutId));
-
-          if (cosRes.ok || cosRes.status === 204) {
-            const baseUrl = token.postUrl!.replace(/\/?$/, "");
-            const url = `${baseUrl}/${encodeURI(token.key)}`;
-            setUploadedUrl(url);
-            void fetchSections();
-            setUploading(false);
-            return;
-          }
-        }
+      for (const file of toUpload) {
+        const ok = await uploadOneFile(file, effectiveSection, UPLOAD_TIMEOUT_MS);
+        if (ok) successCount += 1;
       }
 
-      // 2. 直传失败则回退：经本服务器转发到 COS
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("section", effectiveSection);
-      if (mood) formData.append("mood", mood);
-      if (moodNote) formData.append("moodNote", moodNote);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeoutId));
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error || "上传失败，请稍后重试。");
-      }
-
-      const data = (await res.json()) as { url?: string };
-      if (data.url) {
-        setUploadedUrl(data.url);
+      if (successCount > 0) {
+        setError(null);
         void fetchSections();
+        setFiles([]);
+        setPreviewUrl(null);
+        setSuccessSection(effectiveSection);
+        setSuccessCount(successCount);
+        setSuccessDialogOpen(true);
       } else {
-        throw new Error("上传成功但未返回链接。");
+        setError("上传失败，请稍后重试。");
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
         if (err.name === "AbortError") {
-          setError("上传超时，请检查网络或换一张较小的照片后重试。");
+          setError("上传超时，请检查网络或换较小的照片后重试。");
         } else {
           setError(err.message || "上传出错，请稍后重试。");
         }
@@ -259,6 +278,19 @@ export default function Home() {
               上传照片，出发预备站，装满小小回忆～ฅ^•ﻌ•^ฅ
             </p>
           </div>
+          {isLoggedIn === true && (
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                router.push("/login");
+                router.refresh();
+              }}
+              className="love-pill-button-secondary text-xs"
+            >
+              退出登录
+            </button>
+          )}
         </header>
 
         <div className="flex w-full flex-col gap-8">
@@ -340,36 +372,42 @@ export default function Home() {
 
               <div className="space-y-2">
                 <label className="text-xs font-medium text-sky-900">
-                  选择一张照片
+                  选择照片（可多选）
                 </label>
                 <div className="relative aspect-square w-full max-w-xs overflow-hidden rounded-[2.5rem] border-4 border-amber-300 bg-[#fffef7] shadow-sm sm:ml-auto sm:max-w-none">
                   {previewUrl ? (
-                    <img
-                      src={previewUrl}
-                      alt="预览"
-                      className="h-full w-full object-cover"
-                    />
+                    <div className="relative h-full w-full">
+                      <img
+                        src={previewUrl}
+                        alt="预览"
+                        className="h-full w-full object-cover"
+                      />
+                      {files.length > 1 && (
+                        <span className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">
+                          已选 {files.length} 张
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-amber-700">
                       <span className="text-3xl">📷</span>
                       <span className="text-xs font-medium">
-                        点下面按钮选择一张照片
+                        点下面按钮选择照片（可多选）
                       </span>
                     </div>
                   )}
                   <input
                     type="file"
                     accept="image/*"
+                    multiple
                     className="absolute inset-0 cursor-pointer opacity-0"
-                    required
+                    required={files.length === 0}
                     onChange={(event) => {
-                      const selected = event.target.files?.[0];
-                      setFile(selected || null);
-                      setUploadedUrl(null);
+                      const selected = Array.from(event.target.files ?? []);
+                      setFiles(selected);
                       setError(null);
-
-                      if (selected) {
-                        const url = URL.createObjectURL(selected);
+                      if (selected.length > 0) {
+                        const url = URL.createObjectURL(selected[0]);
                         setPreviewUrl(url);
                       } else {
                         setPreviewUrl(null);
@@ -387,7 +425,7 @@ export default function Home() {
                     {uploading ? "上传中..." : "上传到我们的相册"}
                   </button>
                   <p className="text-[11px] text-zinc-500">
-                    建议单张 &lt; 4MB，避免上传超时或失败
+                    单张不超过 50MB，直传更稳
                   </p>
                 </div>
               </div>
@@ -610,19 +648,36 @@ export default function Home() {
               <p className="text-sm text-red-500">{error}</p>
             )}
 
-            {/* 右侧方形卡片里已经有预览，这里就不要重复展示了 */}
-
-            {uploadedUrl && (
-              <div className="mt-2 flex flex-col gap-2 rounded-[1.75rem] bg-amber-50/90 p-3 text-sm text-sky-900">
-                <span>上传成功！这是这张照片的专属链接：</span>
-                <a
-                  href={uploadedUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="break-all text-xs font-medium text-pink-700 underline underline-offset-2"
-                >
-                  {uploadedUrl}
-                </a>
+            {successDialogOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+                <div className="w-full max-w-sm rounded-[2rem] border-4 border-sky-200 bg-white p-6 shadow-xl">
+                  <p className="text-center text-lg font-semibold text-sky-900">
+                    上传成功！
+                  </p>
+                  <p className="mt-2 text-center text-sm text-sky-700">
+                    {successCount > 1
+                      ? `已成功上传 ${successCount} 张照片到「${successSection}」`
+                      : `已成功上传 1 张照片到「${successSection}」`}
+                  </p>
+                  <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                    {successSection && (
+                      <Link
+                        href={`/album/${encodeURIComponent(successSection)}`}
+                        className="love-pill-button text-center text-sm"
+                        onClick={() => setSuccessDialogOpen(false)}
+                      >
+                        去看看
+                      </Link>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSuccessDialogOpen(false)}
+                      className="rounded-full border-2 border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+                    >
+                      确定
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </form>
