@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
         { acl: "default" },
         { bucket: COS_BUCKET },
         { key },
+        { "success_action_status": 200 },
         ["content-length-range", 0, MAX_FILE_SIZE],
         { "q-sign-algorithm": "sha1" },
         { "q-ak": SECRET_ID },
