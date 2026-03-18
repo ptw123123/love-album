@@ -26,9 +26,10 @@ export async function POST(req: NextRequest) {
 
     const value = await createSessionCookie(username.trim().toLowerCase());
     const res = NextResponse.json({ ok: true, user: username });
+    const isHttps = new URL(req.url).protocol === "https:";
     res.cookies.set(getCookieName(), value, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isHttps,
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
