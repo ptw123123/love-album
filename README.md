@@ -1,5 +1,20 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## 相册上传说明
+
+照片上传使用 **腾讯云 COS**。需在项目根目录配置 `.env.local`：
+
+- `TENCENT_COS_SECRET_ID`
+- `TENCENT_COS_SECRET_KEY`
+- `TENCENT_COS_BUCKET`
+- `TENCENT_COS_REGION`
+
+若上传很慢或经常失败，可尝试：
+
+1. **压缩后再传**：单张建议 &lt; 4MB（部署在 Vercel 时请求体约 4.5MB 限制）。
+2. **检查 COS 配置**：密钥、Bucket、Region 是否正确，是否欠费或权限不足。
+3. **换存储**：可改为 Vercel Blob、Cloudflare R2 等，或改为浏览器直传 COS（STS 临时密钥），减少经服务器中转。
+
 ## Getting Started
 
 First, run the development server:

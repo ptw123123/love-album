@@ -2,6 +2,10 @@ import COS from "cos-nodejs-sdk-v5";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+// 延长超时，避免大图上传被平台提前中断（如 Vercel 默认 10s）
+export const maxDuration = 60;
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB，超过则拒绝（部署在 Vercel 时建议单张 < 4MB）
 
 const cos = new COS({
   SecretId: process.env.TENCENT_COS_SECRET_ID,
@@ -31,6 +35,13 @@ export async function POST(request: NextRequest) {
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "未收到文件。" }, { status: 400 });
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `照片过大（${(file.size / 1024 / 1024).toFixed(1)}MB），请压缩后重试，单张建议不超过 10MB。` },
+        { status: 400 }
+      );
     }
 
     const arrayBuffer = await file.arrayBuffer();
@@ -63,10 +74,19 @@ export async function POST(request: NextRequest) {
     const url = `https://${COS_BUCKET}.cos.${COS_REGION}.myqcloud.com/${publicKey}`;
 
     return NextResponse.json({ url, section: sectionName });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("COS upload error:", error);
+    const message =
+      error instanceof Error ? error.message : "上传失败，请稍后重试。";
+    const isNetworkOrTimeout =
+      typeof message === "string" &&
+      (message.includes("timeout") || message.includes("ETIMEDOUT") || message.includes("ECONNRESET"));
     return NextResponse.json(
-      { error: "上传失败，请稍后重试。" },
+      {
+        error: isNetworkOrTimeout
+          ? "上传超时或网络中断，请检查网络后重试。"
+          : "上传失败，请稍后重试。",
+      },
       { status: 500 }
     );
   }

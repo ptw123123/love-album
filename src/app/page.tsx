@@ -127,15 +127,28 @@ export default function Home() {
     setError(null);
     setUploadedUrl(null);
 
-    try {
-      const res = await fetch("/api/upload", {
+    const UPLOAD_TIMEOUT_MS = 90 * 1000; // 90 秒超时
+    const maxRetries = 1; // 失败后自动重试 1 次
+
+    const doUpload = (retryCount: number): Promise<Response> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+      return fetch("/api/upload", {
         method: "POST",
         body: formData,
-      });
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId));
+    };
+
+    try {
+      let res = await doUpload(0);
+      if (!res.ok && res.status >= 500 && maxRetries > 0) {
+        res = await doUpload(1);
+      }
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "上传失败，请稍后重试。");
+        throw new Error((data as { error?: string }).error || "上传失败，请稍后重试。");
       }
 
       const data = (await res.json()) as { url?: string; section?: string };
@@ -145,8 +158,16 @@ export default function Home() {
       } else {
         throw new Error("上传成功但未返回链接。");
       }
-    } catch (err: any) {
-      setError(err.message || "上传出错，请稍后重试。");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        if (err.name === "AbortError") {
+          setError("上传超时，请检查网络或换一张较小的照片后重试。");
+        } else {
+          setError(err.message || "上传出错，请稍后重试。");
+        }
+      } else {
+        setError("上传出错，请稍后重试。");
+      }
     } finally {
       setUploading(false);
     }
@@ -297,7 +318,9 @@ export default function Home() {
                   >
                     {uploading ? "上传中..." : "上传到我们的相册"}
                   </button>
-                  <span className="sr-only">提示</span>
+                  <p className="text-[11px] text-zinc-500">
+                    建议单张 &lt; 4MB，避免上传超时或失败
+                  </p>
                 </div>
               </div>
             </div>
